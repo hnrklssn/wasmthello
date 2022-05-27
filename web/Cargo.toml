@@ -1,0 +1,13 @@
+[package]
+name = "wasmthello-web"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+wasmthello = { version = "0.1", path = "../" }
+axum = "0.5.6"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+uuid = { version = "1.0", features = ["serde", "v4"] }

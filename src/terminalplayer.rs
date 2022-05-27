@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::PlayerController;
+use wasmthello::PlayerController;
 use wasmthello::Pos;
 use wasmthello::Game;
 use wasmthello::Player;

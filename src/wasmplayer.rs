@@ -1,13 +1,13 @@
 use std::error::Error;
-use crate::PlayerController;
+use crate::game::Game;
+use crate::game::Pos;
+use crate::game::PlayerController;
 use wasmtime::*;
-use wasmthello::Pos;
-use wasmthello::Game;
 
 pub struct WasmPlayer<const N: usize> where [(); N*N]: Sized {
     store: Store<()>,
     memory: Memory,
-    func: TypedFunc<(i32, i32), i32>,
+    func: TypedFunc<(i32, i32, i32), i32>,
     buf: [u8; N*N],
 }
 
@@ -42,7 +42,7 @@ impl<const N: usize> WasmPlayer<N> where [(); N*N]: Sized {
         // There's a few ways we can call the `answer` `Func` value. The easiest
         // is to statically assert its signature with `typed` (in this case
         // asserting it takes no arguments and returns one i32) and then call it.
-        let answer = answer.typed::<(i32, i32), i32, _>(&store)?;
+        let answer = answer.typed::<(i32, i32, i32), i32, _>(&store)?;
         Ok(Self {
             store, memory, func: answer, buf: [0; N*N],
         })
@@ -68,7 +68,11 @@ impl<const N: usize> PlayerController<N> for WasmPlayer<N> where [(); N*N]: Size
 
         // And finally we can call our function! Note that the error propagation
         // with `?` is done to handle the case where the wasm function traps.
-        let ans = self.func.call(&mut self.store, (N as i32, legal_move_count as i32))?;
+        let ans = self.func.call(&mut self.store,
+                                 (N as i32,
+                                  legal_move_count as i32,
+                                  game.current_player().serialize() as i32
+                                  ))?;
         Ok(Pos::from_offset(ans as u8, N))
     }
 }
