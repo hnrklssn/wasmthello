@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut white_player = WasmPlayer::<SIZE>::new(&buffer)?;
     let mut black_player = TerminalPlayer::<SIZE> {};
-    let game = wasmthello::play_game::<SIZE>(&mut white_player, &mut black_player)?;
+    let game = wasmthello::play_game::<SIZE>(&mut white_player, &mut black_player);
     println!("Winner: {:?}", game.winner());
     Ok(())
 }
