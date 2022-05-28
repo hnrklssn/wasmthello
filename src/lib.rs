@@ -6,7 +6,7 @@ pub use crate::game::{Game, Pos, Player, PlayerController};
 
 use std::error::Error;
 
-pub fn play_game<const N: usize>(white_player: &mut dyn PlayerController<N>, black_player: &mut dyn PlayerController<N>) -> Result<Game<N>, Box<dyn Error>> {
+pub fn play_game<const N: usize>(white_player: &mut dyn PlayerController<N>, black_player: &mut dyn PlayerController<N>) -> Game<N> {
     let mut game = Game::<N>::new();
     while !game.game_over() {
         let legal_moves = game.legal_moves(game.current_player());
@@ -15,13 +15,18 @@ pub fn play_game<const N: usize>(white_player: &mut dyn PlayerController<N>, bla
             // Game is over if neither can play
             assert!(!game.legal_moves(game.current_player()).is_empty());
         }
-        let pos = if game.current_player() == Player::White {
-            white_player.make_play(&game)?
+        let play = if game.current_player() == Player::White {
+            white_player.make_play(&game).map_err(|_| Player::White)
         } else {
-            black_player.make_play(&game)?
+            black_player.make_play(&game).map_err(|_| Player::Black)
         };
-        println!("Answer: {:?}", pos);
-        game.play(pos);
+        match play {
+            Ok(pos) => {
+                println!("Answer: {:?}", pos);
+                game.play(pos);
+            },
+            Err(player) => game.misplay(player)
+        };
     }
-    Ok(game)
+    game
 }

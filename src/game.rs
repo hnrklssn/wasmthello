@@ -67,6 +67,8 @@ impl Dir {
 pub struct Game<const N: usize> {
     board: [[Option<Player>; N]; N],
     turn: Player,
+    moves: Vec<u8>,
+    misplayed: Option<Player>,
 }
 
 impl <const N: usize> Game<N> {
@@ -75,6 +77,8 @@ impl <const N: usize> Game<N> {
         let mut g = Self {
             board: [[None; N]; N],
             turn: Player::Black,
+            moves: Vec::new(),
+            misplayed: None,
         };
         g.board[N / 2 - 1][N / 2 - 1] = Some(Player::White);
         g.board[N / 2][N / 2 - 1] = Some(Player::Black);
@@ -114,6 +118,19 @@ impl <const N: usize> Game<N> {
         }
         self.set(pos, self.turn);
         self.turn = self.turn.flip();
+        self.moves.push(pos.to_offset(N));
+    }
+
+    pub fn misplay(&mut self, player: Player) {
+        self.misplayed = Some(player);
+    }
+
+    pub fn is_misplay(&self) -> bool {
+        self.misplayed.is_some()
+    }
+
+    pub fn move_list(&self) -> &Vec<u8> {
+        &self.moves
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {
@@ -134,12 +151,17 @@ impl <const N: usize> Game<N> {
     }
 
     pub fn game_over(&self) -> bool {
-        self.legal_moves(self.turn).is_empty() &&
-        self.legal_moves(self.turn.flip()).is_empty()
+        self.misplayed.is_some() ||
+            (self.legal_moves(self.turn).is_empty() &&
+            self.legal_moves(self.turn.flip()).is_empty())
     }
 
     pub fn winner(&self) -> Option<Player> {
         assert!(self.game_over());
+        if self.misplayed.is_some() {
+            return self.misplayed.map(|p| p.flip());
+        }
+
         let non_empty_spaces = self.positions().into_iter().filter_map(|pos| self.space(pos));
         let (white_spaces, black_spaces): (Vec<Player>, Vec<Player>) = non_empty_spaces.partition(|&space| space == Player::White);
         if white_spaces.len() == black_spaces.len() {
