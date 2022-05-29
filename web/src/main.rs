@@ -177,7 +177,7 @@ async fn game_stats(
     Ok((StatusCode::OK, Json(result)))
 }
 
-fn battle_bots<'a, const N: usize>(db: BotDb<'a>, game_db: GameDb<'a>, contender: Bot<'a>, bot_list: Vec<&'a str>) -> Option<()> where [(); N*N]: Sized {
+fn battle_bots<'a, const N: usize>(db: BotDb<'a>, game_db: GameDb<'a>, contender: Bot<'a>, bot_list: Vec<&'a str>) -> Option<()> where [(); N*N*2]: Sized {
     let bots = {
         let read = db.read().unwrap();
         bot_list.into_iter().map(|name| (name, read.get(&name).expect("bot removed?").wasm))

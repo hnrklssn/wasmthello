@@ -4,57 +4,54 @@ use crate::game::Pos;
 use crate::game::PlayerController;
 use wasmtime::*;
 
-pub struct WasmPlayer<const N: usize> where [(); N*N]: Sized {
+pub struct WasmPlayer<const N: usize> where [(); N*N*2]: Sized {
     store: Store<()>,
     memory: Memory,
-    func: TypedFunc<(i32, i32, i32), i32>,
-    buf: [u8; N*N],
+    func: TypedFunc<(i32, i32, i32, i32, i32), i32>,
+    buf: [u8; N*N*2],
+    wasm_memory_offset: i32,
 }
 
-impl<const N: usize> WasmPlayer<N> where [(); N*N]: Sized {
+impl<const N: usize> WasmPlayer<N> where [(); N*N*2]: Sized {
     pub fn new(wasm: &[u8]) -> Result<Self, Box<dyn Error>> {
         let engine = Engine::default();
 
-        // We start off by creating a `Module` which represents a compiled form
-        // of our input wasm module. In this case it'll be JIT-compiled after
-        // we parse the text format.
         let module = Module::new(&engine, wasm)?;
-
-        // A `Store` is what will own instances, functions, globals, etc. All wasm
-        // items are stored within a `Store`, and it's what we'll always be using to
-        // interact with the wasm world. Custom data can be stored in stores but for
-        // now we just use `()`.
         let mut store = Store::new(&engine, ());
+        let instance = Instance::new(&mut store, &module, &[])?;
 
-        let memory_ty = MemoryType::new(1, None);
-        let memory = Memory::new(&mut store, memory_ty)?;
+        let alloc = instance.get_func(&mut store, "alloc_wasm_memory")
+            .expect("`alloc_wasm_memory` was not an exported function");
+        let alloc = alloc.typed::<i32, i32, _>(&store)?;
 
-        // With a compiled `Module` we can then instantiate it, creating
-        // an `Instance` which we can actually poke at functions on.
-        let instance = Instance::new(&mut store, &module, &[memory.into()])?;
+        // Get linear memory. By using an export and letting the wasm module handle
+        // allocations we avoid writing to memory from host side without guest
+        // being aware of it. It also seems quite tricky to compile languages to
+        // wasm and get it to use imported memory.
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .expect("failed to find `memory` export");
 
-        // The `Instance` gives us access to various exported functions and items,
-        // which we access here to pull out our `answer` exported function and
-        // run it.
         let answer = instance.get_func(&mut store, "answer")
-            .expect("`answer` was not an exported function");
+            .expect("`answer` was not an exported function")
+            .typed::<(i32, i32, i32, i32, i32), i32, _>(&store)?;
 
-        // There's a few ways we can call the `answer` `Func` value. The easiest
-        // is to statically assert its signature with `typed` (in this case
-        // asserting it takes no arguments and returns one i32) and then call it.
-        let answer = answer.typed::<(i32, i32, i32), i32, _>(&store)?;
+        // Board occupies N*N, legal moves never occupy more than N*N.
+        // This is all the memory we'll use, so we don't need the alloc
+        // function anymore. We'll use it for the entire duration of the
+        // game, so no need for a dealloc function.
+        let ptr = alloc.call(&mut store, (N*N*2) as i32)?;
         Ok(Self {
-            store, memory, func: answer, buf: [0; N*N],
+            store, memory, func: answer, buf: [0; N*N*2], wasm_memory_offset: ptr,
         })
     }
 }
 
-impl<const N: usize> PlayerController<N> for WasmPlayer<N> where [(); N*N]: Sized {
+impl<const N: usize> PlayerController<N> for WasmPlayer<N> where [(); N*N*2]: Sized {
 
     fn make_play(&mut self, game: &Game<N>) -> Result<Pos, Box<dyn Error>> {
-        game.serialize(&mut self.buf);
+        game.serialize(&mut self.buf); // Write the first N*N bytes
         game.print();
-        self.memory.write(&mut self.store, 0, &self.buf)?;
 
         let legal_moves = game.legal_moves(game.current_player());
         let legal_move_count = legal_moves.len();
@@ -62,16 +59,16 @@ impl<const N: usize> PlayerController<N> for WasmPlayer<N> where [(); N*N]: Size
         for (i, pos) in legal_moves.into_iter().enumerate() {
             let offset = pos.to_offset(N);
             println!("legal move {}: {:?}", i, pos);
-            self.buf[i] = offset;
+            self.buf[N*N+i] = offset;
         }
-        self.memory.write(&mut self.store, self.buf.len(), &self.buf)?;
+        self.memory.write(&mut self.store, self.wasm_memory_offset as usize, &self.buf)?;
 
-        // And finally we can call our function! Note that the error propagation
-        // with `?` is done to handle the case where the wasm function traps.
         let ans = self.func.call(&mut self.store,
-                                 (N as i32,
+                                 (self.wasm_memory_offset as i32,
+                                  N as i32,
+                                  self.wasm_memory_offset + (N*N) as i32,
                                   legal_move_count as i32,
-                                  game.current_player().serialize() as i32
+                                  game.current_player().serialize() as i32,
                                   ))?;
         Ok(Pos::from_offset(ans as u8, N))
     }
