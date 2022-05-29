@@ -4,8 +4,6 @@ mod game;
 pub use crate::wasmplayer::WasmPlayer;
 pub use crate::game::{Game, Pos, Player, PlayerController};
 
-use std::error::Error;
-
 pub fn play_game<const N: usize>(white_player: &mut dyn PlayerController<N>, black_player: &mut dyn PlayerController<N>) -> Game<N> {
     let mut game = Game::<N>::new();
     while !game.game_over() {
